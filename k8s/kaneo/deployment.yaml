@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaneo
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: kaneo
+  template:
+    metadata:
+      labels:
+        app: kaneo
+    spec:
+      # Service-link env vars (KANEO_PORT=tcp://...) collide with the app's KANEO_* settings
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      # nginx stays on a read-only root, but the entrypoint rewrites the web assets in place
+      initContainers:
+        - name: copy-web
+          image: ghcr.io/usekaneo/kaneo:2.46.2
+          command: ["sh", "-c", "cp -a /usr/share/nginx/html/. /web/"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: web
+              mountPath: /web
+      containers:
+        - name: kaneo
+          image: ghcr.io/usekaneo/kaneo:2.46.2
+          ports:
+            - name: http
+              containerPort: 5173
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          env:
+            - name: KANEO_CLIENT_URL
+              value: https://kaneo.chivtar.dev
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 320Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: web
+              mountPath: /usr/share/nginx/html
+            - name: run
+              mountPath: /run
+            - name: nginx-tmp
+              mountPath: /var/lib/nginx/tmp
+            - name: nginx-log
+              mountPath: /var/log/nginx
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: web
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-log
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

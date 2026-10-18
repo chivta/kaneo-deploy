@@ -52,6 +52,10 @@ spec:
           env:
             - name: KANEO_CLIENT_URL
               value: https://kaneo.chivtar.dev
+            - name: DISABLE_REGISTRATION
+              value: "true"
+            - name: DISABLE_GUEST_ACCESS
+              value: "true"
           startupProbe:
             httpGet:
               path: /api/health
